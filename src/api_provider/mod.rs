@@ -3,17 +3,17 @@ use anyhow::{Context, Result};
 use rand::{thread_rng, Rng};
 use std::time::SystemTime;
 
-pub struct HomeEndpoint {
+pub struct WebEndpoint {
     url: String,
 }
 
-impl HomeEndpoint {
+impl WebEndpoint {
     pub fn new(url: &str) -> Self {
-        HomeEndpoint { url: url.into() }
+        WebEndpoint { url: url.into() }
     }
 }
 
-impl HikAPI for HomeEndpoint {
+impl HikAPI for WebEndpoint {
     fn endpoint(&self) -> &str {
         &self.url
     }

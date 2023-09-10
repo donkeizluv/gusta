@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::history::HistManager;
 use anyhow::Result;
-use api_provider::HomeEndpoint;
+use api_provider::WebEndpoint;
 use client::*;
 use colored::Colorize;
 use config::*;
@@ -19,8 +19,8 @@ const FETCH_USER_DEPLAY: u64 = 1333;
 #[tokio::main]
 async fn main() -> Result<()> {
     let env: Config = Config::read_env()?;
-    let api = HomeEndpoint::new(&env.endpoint);
-    let mut client = HikClient::new(&env.username, &env.password, api);
+    let ep = WebEndpoint::new(&env.endpoint);
+    let mut client = HikClient::new(&env.username, &env.password, ep);
     let mut hist_mngr: HistManager<OnlineUser> = HistManager::new();
 
     client.login().await?;
