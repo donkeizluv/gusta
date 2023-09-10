@@ -45,10 +45,10 @@ async fn main() -> Result<()> {
         let current = utils::ignore_self(&online.users, &env.username);
 
         cls!();
-        println!("{}", "Running...".green());
+        println!("{}", "Running...");
         println!();
         println!();
-        println!("{}", "Online 👀".green());
+        println!("{}", "Online 👀".bright_green());
         println!("{}", current);
         println!();
         println!();
