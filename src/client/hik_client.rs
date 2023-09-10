@@ -35,6 +35,8 @@ impl<T: HikAPI> HikClient<T> {
             token: None,
         }
     }
+    
+    #[allow(dead_code)]
     pub fn logout(&mut self) {
         self.clean_up();
     }
