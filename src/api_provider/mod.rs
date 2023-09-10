@@ -1,4 +1,4 @@
-use crate::hikvision::HikAPI;
+use crate::client::HikAPI;
 use anyhow::{Context, Result};
 use rand::{thread_rng, Rng};
 use std::time::SystemTime;

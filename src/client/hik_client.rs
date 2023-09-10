@@ -1,4 +1,4 @@
-use crate::hikvision::{OnlineUserList, SessionLogin};
+use crate::client::{OnlineUserList, SessionLogin};
 
 use super::auth_setting::*;
 
@@ -12,7 +12,7 @@ use tokio::{
 };
 
 #[derive(Debug)]
-pub struct HikContext<T: HikAPI> {
+pub struct HikClient<T: HikAPI> {
     pub username: String,
     pub password: String,
     pub api_provider: T,
@@ -22,11 +22,11 @@ pub struct HikContext<T: HikAPI> {
     token: Option<String>,
 }
 
-impl<T: HikAPI> HikContext<T> {
+impl<T: HikAPI> HikClient<T> {
     const HB_DELAY: u64 = 10;
 
     pub fn new(username: &str, password: &str, api_provider: T) -> Self {
-        HikContext {
+        HikClient {
             username: username.into(),
             password: password.into(),
             api_provider,
@@ -192,7 +192,7 @@ struct HeatbeatContext {
     token: String,
 }
 
-impl<T: HikAPI> Drop for HikContext<T> {
+impl<T: HikAPI> Drop for HikClient<T> {
     fn drop(&mut self) {
         self.clean_up()
     }

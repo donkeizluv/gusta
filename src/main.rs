@@ -3,14 +3,14 @@ use std::time::Duration;
 use crate::history::HistManager;
 use anyhow::Result;
 use api_provider::HomeEndpoint;
+use client::*;
 use colored::Colorize;
 use config::*;
-use hikvision::*;
 use tokio::time;
 
 mod api_provider;
+mod client;
 mod config;
-mod hikvision;
 mod history;
 mod macros;
 
@@ -20,17 +20,17 @@ const FETCH_USER_DEPLAY: u64 = 1333;
 async fn main() -> Result<()> {
     let env: Config = Config::read_env()?;
     let api = HomeEndpoint::new(&env.endpoint);
-    let mut context = HikContext::new(&env.username, &env.password, api);
+    let mut client = HikClient::new(&env.username, &env.password, api);
     let mut hist_mngr: HistManager<OnlineUser> = HistManager::new();
 
-    context.login().await?;
+    client.login().await?;
     println!("{}", "Login success!".green());
 
     let mut interval = time::interval(Duration::from_millis(FETCH_USER_DEPLAY));
     loop {
         interval.tick().await;
 
-        let online = match context.fetch_online_users().await {
+        let online = match client.fetch_online_users().await {
             Ok(o) => o,
             Err(e) => {
                 println!("{}\n{}", "error while fetching users".red(), e);
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
 }
 
 mod utils {
-    use crate::hikvision::OnlineUser;
+    use crate::client::OnlineUser;
 
     use std::fmt::Display;
 

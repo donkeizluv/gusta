@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::hikvision::Hashable;
+use crate::client::Hashable;
 
 pub struct HistManager<T: Hashable + Clone> {
     hist: HashMap<u64, T>,
