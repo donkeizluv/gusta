@@ -3,7 +3,7 @@ use std::{env, fs, path::PathBuf};
 
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Config {
     pub endpoint: String,
     pub username: String,

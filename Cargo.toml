@@ -7,12 +7,13 @@ edition = "2021"
 opt-level = 3
 
 [dependencies]
-tokio = { version = "1.32.0", features = ["macros", "rt-multi-thread"] }
 anyhow = "1.0.75"
+cursive = { version = "0.20.0", default-features = false, features = ["crossterm-backend"] }
+tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
 rand = "0.8.5"
-reqwest = "0.11.20"
-serde = { version = "1.0.188", features = ["serde_derive"] }
+reqwest = "0.11.22"
+serde = { version = "1.0.190", features = ["serde_derive"] }
 serde-xml-rs = "0.6.0"
 sha256 = "1.4.0"
-toml = "0.7.8"
-colored = "2.0.4"
+toml = "0.8.4"
+cursive_table_view = "0.14.0"

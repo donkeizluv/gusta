@@ -12,7 +12,7 @@ pub struct OnlineUserList {
     pub users: Vec<OnlineUser>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq)]
 pub struct OnlineUser {
     pub id: u32,
 
@@ -26,6 +26,16 @@ pub struct OnlineUser {
 
     #[serde(rename = "clientAddress")]
     pub client_address: ClientAddress,
+}
+
+impl PartialEq for OnlineUser {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+        // && self.id == other.id
+        // && self.user_type == other.user_type
+        // && self.login_time == other.login_time
+        // && self.client_address == other.client_address
+    }
 }
 
 impl Hash for OnlineUser {
@@ -42,9 +52,14 @@ impl Hash for OnlineUser {
 pub struct ClientAddress {
     #[serde(rename = "ipAddress")]
     pub ip_address: String,
+    // #[serde(rename = "ipv6Address")]
+    // pub ipv6_address: String,
+}
 
-    #[serde(rename = "ipv6Address")]
-    pub ipv6_address: String,
+impl From<ClientAddress> for String {
+    fn from(value: ClientAddress) -> Self {
+        value.ip_address
+    }
 }
 
 pub trait Hashable: Hash {

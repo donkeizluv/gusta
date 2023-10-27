@@ -24,6 +24,10 @@ impl<T: Hashable + Clone> HistManager<T> {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.hist.clear()
+    }
+
     pub fn histories(&self, current: &[T]) -> Vec<T> {
         let current_h = current.iter().map(|c| c.hash_value()).collect::<Vec<u64>>();
 

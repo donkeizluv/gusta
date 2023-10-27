@@ -12,14 +12,21 @@ use tokio::{
 };
 
 #[derive(Debug)]
+enum ClientStatus {
+    NotConnected,
+    Connected {
+        auth_setting: AuthSetting,
+        heart_beat_handle: JoinHandle<()>,
+        token: String,
+    },
+}
+
+#[derive(Debug)]
 pub struct HikClient<T: HikAPI> {
     pub username: String,
     pub password: String,
     pub api_provider: T,
-
-    auth_setting: Option<AuthSetting>,
-    heart_beat_handle: Option<JoinHandle<()>>,
-    token: Option<String>,
+    connection: ClientStatus,
 }
 
 impl<T: HikAPI> HikClient<T> {
@@ -30,53 +37,57 @@ impl<T: HikAPI> HikClient<T> {
             username: username.into(),
             password: password.into(),
             api_provider,
-            auth_setting: None,
-            heart_beat_handle: None,
-            token: None,
+            connection: ClientStatus::NotConnected,
         }
     }
-    
+
     #[allow(dead_code)]
     pub fn logout(&mut self) {
-        self.clean_up();
+        self.disconnect();
     }
 
     pub async fn login(&mut self) -> Result<()> {
-        if self.auth_setting.is_some() || self.token.is_some() || self.heart_beat_handle.is_some() {
-            return Err(Error::msg("already logged in"));
+        match self.connection {
+            ClientStatus::NotConnected => {
+                let client = reqwest::Client::new();
+                let setting = self.fetch_auth_setting(&client).await?;
+
+                // login
+                let login_payload = SessionLogin {
+                    password: self.encoded_pwd(&setting)?,
+                    username: self.username.clone(),
+                    is_session_id_valid_long_term: setting.is_session_id_valid_long_term,
+                    session_id: setting.session_id.clone(),
+                    session_id_version: setting.session_id_version,
+                };
+
+                let payload_xml = to_string(&login_payload)?;
+                let login_res = client
+                    .post(self.api_provider.login_api()?)
+                    .body(payload_xml) // remove clone when done
+                    .send()
+                    .await?;
+
+                let auth_token = match login_res.headers().get("Set-Cookie") {
+                    Some(t) => utils::extract_cookie(t.to_str()?)?,
+                    None => return Err(Error::msg("unable to login")),
+                };
+
+                let hb_handle = self.start_hb(&auth_token);
+
+                self.connection = ClientStatus::Connected {
+                    auth_setting: setting,
+                    heart_beat_handle: hb_handle,
+                    token: auth_token,
+                };
+                Ok(())
+            }
+            ClientStatus::Connected {
+                auth_setting: _,
+                heart_beat_handle: _,
+                token: _,
+            } => Err(Error::msg("already connected")),
         }
-
-        let client = reqwest::Client::new();
-        let setting = self.fetch_auth_setting(&client).await?;
-
-        // login
-        let login_payload = SessionLogin {
-            password: self.encoded_pwd(&setting)?,
-            username: self.username.clone(),
-            is_session_id_valid_long_term: setting.is_session_id_valid_long_term,
-            session_id: setting.session_id.clone(),
-            session_id_version: setting.session_id_version,
-        };
-
-        let payload_xml = to_string(&login_payload)?;
-        let login_res = client
-            .post(self.api_provider.login_api()?)
-            .body(payload_xml) // remove clone when done
-            .send()
-            .await?;
-
-        let auth_token = match login_res.headers().get("Set-Cookie") {
-            Some(t) => utils::extract_cookie(t.to_str()?)?,
-            None => return Err(Error::msg("unable to login")),
-        };
-
-        let hb_handle = self.start_hb(&auth_token);
-
-        self.auth_setting = Some(setting);
-        self.heart_beat_handle = Some(hb_handle);
-        self.token = Some(auth_token);
-
-        Ok(())
     }
     fn start_hb(&self, token: &str) -> JoinHandle<()> {
         let hb_context = HeatbeatContext {
@@ -125,12 +136,17 @@ impl<T: HikAPI> HikClient<T> {
     }
 
     pub async fn fetch_online_users(&self) -> Result<OnlineUserList> {
-        match &self.token {
-            Some(t) => {
+        match &self.connection {
+            ClientStatus::NotConnected => Err(Error::msg("not logged in")),
+            ClientStatus::Connected {
+                auth_setting: _,
+                heart_beat_handle: _,
+                token,
+            } => {
                 let client = reqwest::Client::new();
                 let res = client
                     .get(self.api_provider.online_users_api())
-                    .header("Cookie", t)
+                    .header("Cookie", token)
                     .send()
                     .await?;
                 let body = res.text().await?;
@@ -139,7 +155,6 @@ impl<T: HikAPI> HikClient<T> {
                     Err(_) => Err(Error::msg("unable to deserialize result")),
                 }
             }
-            None => Err(Error::msg("not logged in")),
         }
     }
 
@@ -175,17 +190,18 @@ impl<T: HikAPI> HikClient<T> {
         Ok(result)
     }
 
-    fn clear(&mut self) {
-        self.auth_setting = None;
-        self.token = None;
-        self.heart_beat_handle = None;
-    }
-
-    fn clean_up(&mut self) {
-        if let Some(ref handle) = self.heart_beat_handle {
-            handle.abort();
+    fn disconnect(&mut self) {
+        match &self.connection {
+            ClientStatus::NotConnected => (),
+            ClientStatus::Connected {
+                auth_setting: _,
+                heart_beat_handle,
+                token: _,
+            } => {
+                heart_beat_handle.abort();
+                self.connection = ClientStatus::NotConnected
+            }
         }
-        self.clear();
     }
 }
 
@@ -196,7 +212,7 @@ struct HeatbeatContext {
 
 impl<T: HikAPI> Drop for HikClient<T> {
     fn drop(&mut self) {
-        self.clean_up()
+        self.disconnect()
     }
 }
 
