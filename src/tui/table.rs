@@ -58,17 +58,17 @@ pub fn build_table(name: &str) -> impl View {
         // .column(UserColumn::Id, UserColumn::Id.as_str(), |c| {c})
         // .column(UserColumn::UserType, UserColumn::UserType.as_str(), |c| {c})
         .column(UserColumn::Name, UserColumn::Name.as_str(), |c| {
-            c.align(HAlign::Center).width_percent(10)
+            c.align(HAlign::Center).width_percent(20)
         })
         .column(
             UserColumn::ClientAddress,
             UserColumn::ClientAddress.as_str(),
-            |c| c.align(HAlign::Right).width_percent(14),
+            |c| c.align(HAlign::Right).width_percent(40),
         )
         .column(UserColumn::LoginTime, UserColumn::LoginTime.as_str(), |c| {
             c.align(HAlign::Center)
                 .align(HAlign::Right)
-                .width_percent(16)
+                .width_percent(40)
         });
     table.sort_by(UserColumn::Name, Ordering::Greater);
     table.with_name(name)

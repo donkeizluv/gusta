@@ -1,4 +1,7 @@
-use self::table::{build_table, UserColumn};
+use self::{
+    table::{build_table, UserColumn},
+    theme::get_theme,
+};
 use crate::{
     api_provider::WebEndpoint,
     client::{HikClient, OnlineUser},
@@ -21,6 +24,7 @@ use tokio::{
 };
 
 mod table;
+mod theme;
 
 enum Status {
     Idle,
@@ -71,13 +75,13 @@ impl AppTui {
                         .content(build_table(view_names::HISTORY))
                         .full_screen(),
                 )
-                .child(TextView::new("Press q to quit").h_align(HAlign::Right))
-                // .child(TextView::new("Press c to clear").h_align(HAlign::Right)),
+                .child(TextView::new("Press q to quit").h_align(HAlign::Right)), // .child(TextView::new("Press c to clear").h_align(HAlign::Right)),
         );
         let sink = siv.cb_sink().clone();
 
         (siv, sink)
     }
+    
     pub async fn start(&mut self) -> Result<()> {
         let (mut siv, cb_sink) = Self::build_siv();
         let mut hik_client = HikClient::new(
@@ -127,7 +131,6 @@ impl AppTui {
                     s.call_on_name(
                         view_names::ONLINE_USER,
                         |t: &mut TableView<OnlineUser, UserColumn>| {
-                            println!("found!");
                             t.set_items_stable(current);
                         },
                     );
@@ -146,6 +149,7 @@ impl AppTui {
                 // if res.is_err() {}
             }
         });
+        siv.set_theme(get_theme());
         siv.run();
 
         self.status = Status::Running {
