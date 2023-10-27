@@ -3,7 +3,7 @@ use cursive::{
     With,
 };
 
-pub fn get_theme() -> Theme {
+pub fn dark() -> Theme {
     Theme {
         shadow: true,
         borders: BorderStyle::Simple,

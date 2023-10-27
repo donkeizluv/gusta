@@ -1,9 +1,11 @@
 use self::{
+    audio::SoundBank,
     table::{build_table, UserColumn},
-    theme::get_theme,
+    theme::dark,
 };
 use crate::{
     api_provider::WebEndpoint,
+    assets,
     client::{HikClient, OnlineUser},
     config::Config,
     history::HistManager,
@@ -23,6 +25,7 @@ use tokio::{
     time,
 };
 
+mod audio;
 mod table;
 mod theme;
 
@@ -39,6 +42,7 @@ enum Status {
 pub struct AppTui {
     status: Status,
     config: Arc<Config>,
+    audio_man: Arc<Mutex<SoundBank>>,
 }
 
 mod view_names {
@@ -48,11 +52,12 @@ mod view_names {
 const FETCH_USER_DEPLAY: u64 = 1111;
 
 impl AppTui {
-    pub fn new(conf: Config) -> Self {
-        Self {
+    pub fn new(conf: Config) -> Result<Self> {
+        Ok(Self {
             config: Arc::new(conf),
             status: Status::Idle,
-        }
+            audio_man: Arc::new(Mutex::new(SoundBank::from_array(assets::alert_sound())?)),
+        })
     }
     fn build_siv() -> (CursiveRunnable, CbSink) {
         let mut siv = cursive::default();
@@ -75,13 +80,14 @@ impl AppTui {
                         .content(build_table(view_names::HISTORY))
                         .full_screen(),
                 )
-                .child(TextView::new("Press q to quit").h_align(HAlign::Right)), // .child(TextView::new("Press c to clear").h_align(HAlign::Right)),
+                .child(TextView::new("Press q to quit").h_align(HAlign::Right)),
+            // .child(TextView::new("Press c to clear").h_align(HAlign::Right)),
         );
         let sink = siv.cb_sink().clone();
 
         (siv, sink)
     }
-    
+
     pub async fn start(&mut self) -> Result<()> {
         let (mut siv, cb_sink) = Self::build_siv();
         let mut hik_client = HikClient::new(
@@ -97,14 +103,15 @@ impl AppTui {
         // captures
         let sink = cb_sink.clone();
         let conf = self.config.clone();
-        let c_client = arc_client.clone();
-        let c_hist_mngr = arc_hist_mngr.clone();
+        let client = arc_client.clone();
+        let hist_mngr = arc_hist_mngr.clone();
+        let sb = self.audio_man.clone();
         let fetch_h: JoinHandle<()> = task::spawn(async move {
             let mut interval = time::interval(Duration::from_millis(FETCH_USER_DEPLAY));
+            let mut last_cur_count: usize = 0;
             loop {
                 interval.tick().await;
-
-                let online = match c_client.fetch_online_users().await {
+                let online = match client.fetch_online_users().await {
                     Ok(o) => o,
                     Err(_e) => {
                         // TODO show error
@@ -112,7 +119,7 @@ impl AppTui {
                     }
                 };
                 let hist = {
-                    let mut hist_lock = c_hist_mngr.lock().await;
+                    let mut hist_lock = hist_mngr.lock().await;
                     hist_lock.add_vec(&online.users);
                     hist_lock
                         .histories(&online.users)
@@ -127,6 +134,15 @@ impl AppTui {
                     .filter(|o| o.name != conf.username)
                     .collect::<Vec<OnlineUser>>();
 
+                // play alert if cur online count changed
+                if current.len() != last_cur_count {
+                    // TODO handle result err
+                    let mut sb_lock = sb.lock().await;
+                    sb_lock.play().unwrap();
+                }
+                last_cur_count = current.len();
+
+                // updates TUI
                 let _res = sink.clone().send(Box::new(|s| {
                     s.call_on_name(
                         view_names::ONLINE_USER,
@@ -149,7 +165,7 @@ impl AppTui {
                 // if res.is_err() {}
             }
         });
-        siv.set_theme(get_theme());
+        siv.set_theme(dark());
         siv.run();
 
         self.status = Status::Running {
