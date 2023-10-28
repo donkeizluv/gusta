@@ -1,16 +1,15 @@
 use self::{
     audio::SoundBank,
     table::{build_table, UserColumn},
-    theme::dark,
+    theme::dark, history::HistManager,
 };
 use crate::{
     api_provider::WebEndpoint,
     assets,
     client::{HikClient, OnlineUser},
     config::Config,
-    history::HistManager,
 };
-use anyhow::Result;
+use anyhow::{Error, Result};
 use cursive::{
     align::HAlign,
     view::Resizable,
@@ -19,24 +18,18 @@ use cursive::{
 };
 use cursive_table_view::TableView;
 use std::{sync::Arc, time::Duration};
-use tokio::{
-    sync::Mutex,
-    task::{self, JoinHandle},
-    time,
-};
+use tokio::{sync::Mutex, task::JoinHandle, time};
 
 mod audio;
 mod table;
 mod theme;
+mod history;
 
 enum Status {
     Idle,
     Running {
         cursive: CursiveRunnable,
-        cb_sink: CbSink,
-        fetch_online_h: JoinHandle<()>,
-        hist_mngr: Arc<Mutex<HistManager<OnlineUser>>>,
-        hik_client: Arc<HikClient<WebEndpoint>>,
+        fetch_jh: JoinHandle<()>,
     },
 }
 pub struct AppTui {
@@ -49,9 +42,10 @@ mod view_names {
     pub const ONLINE_USER: &str = "online_tbl";
     pub const HISTORY: &str = "history_tbl";
 }
-const FETCH_USER_DEPLAY: u64 = 1111;
 
 impl AppTui {
+    const FETCH_USER_DEPLAY: u64 = 1111;
+
     pub fn new(conf: Config) -> Result<Self> {
         Ok(Self {
             config: Arc::new(conf),
@@ -59,7 +53,7 @@ impl AppTui {
             audio_man: Arc::new(Mutex::new(SoundBank::from_array(assets::alert_sound())?)),
         })
     }
-    fn build_siv() -> (CursiveRunnable, CbSink) {
+    fn build_tui() -> (CursiveRunnable, CbSink) {
         let mut siv = cursive::default();
         siv.add_global_callback('q', |s| s.quit());
         // siv.add_global_callback('c', |_s| {
@@ -89,28 +83,25 @@ impl AppTui {
     }
 
     pub async fn start(&mut self) -> Result<()> {
-        let (mut siv, cb_sink) = Self::build_siv();
-        let mut hik_client = HikClient::new(
+        // captures
+        let mut client = HikClient::new(
             &self.config.username,
             &self.config.password,
             WebEndpoint::new(&self.config.endpoint),
         );
-        hik_client.login().await?;
+        client.login().await?;
 
-        let arc_client = Arc::new(hik_client);
-        let arc_hist_mngr = Arc::new(Mutex::new(HistManager::new()));
-
-        // captures
-        let sink = cb_sink.clone();
+        let (mut siv, sink) = Self::build_tui();
         let conf = self.config.clone();
-        let client = arc_client.clone();
-        let hist_mngr = arc_hist_mngr.clone();
         let sb = self.audio_man.clone();
-        let fetch_h: JoinHandle<()> = task::spawn(async move {
-            let mut interval = time::interval(Duration::from_millis(FETCH_USER_DEPLAY));
+
+        let fetch_jh = tokio::spawn(async move {
+            let mut hist_mngr = HistManager::new();
+            let mut interval = time::interval(Duration::from_millis(Self::FETCH_USER_DEPLAY));
             let mut last_cur_count: usize = 0;
             loop {
                 interval.tick().await;
+
                 let online = match client.fetch_online_users().await {
                     Ok(o) => o,
                     Err(_e) => {
@@ -118,15 +109,13 @@ impl AppTui {
                         continue;
                     }
                 };
-                let hist = {
-                    let mut hist_lock = hist_mngr.lock().await;
-                    hist_lock.add_vec(&online.users);
-                    hist_lock
-                        .histories(&online.users)
-                        .into_iter()
-                        .filter(|o| o.name != conf.username)
-                        .collect::<Vec<OnlineUser>>()
-                };
+
+                hist_mngr.add_vec(&online.users);
+                let hist = hist_mngr
+                    .histories(&online.users)
+                    .into_iter()
+                    .filter(|o| o.name != conf.username)
+                    .collect::<Vec<OnlineUser>>();
 
                 let current = online
                     .users
@@ -170,17 +159,22 @@ impl AppTui {
 
         self.status = Status::Running {
             cursive: siv,
-            cb_sink,
-            hik_client: arc_client,
-            hist_mngr: arc_hist_mngr,
-            fetch_online_h: fetch_h,
+            fetch_jh,
         };
 
         Ok(())
     }
 
-    pub fn stop(&mut self) {
-        self.status = Status::Idle
+    pub fn stop(&mut self) -> Result<()> {
+        match &mut self.status {
+            Status::Idle => return Err(Error::msg("app not running")),
+            Status::Running { cursive, fetch_jh } => {
+                cursive.quit();
+                fetch_jh.abort();
+
+                Ok(())
+            }
+        }
     }
 }
 
@@ -189,14 +183,10 @@ impl Drop for AppTui {
         match &mut self.status {
             Status::Idle => {}
             Status::Running {
-                fetch_online_h,
-                hist_mngr: _,
-                hik_client: _,
-                cursive,
-                cb_sink: _,
+                fetch_jh: _,
+                cursive: _,
             } => {
-                cursive.quit();
-                fetch_online_h.abort()
+                self.stop().unwrap();
             }
         }
     }

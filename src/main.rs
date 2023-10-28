@@ -6,7 +6,6 @@ mod api_provider;
 mod assets;
 mod client;
 mod config;
-mod history;
 mod tui;
 
 #[tokio::main]
